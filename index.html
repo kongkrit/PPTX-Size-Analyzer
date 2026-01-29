@@ -5,63 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PPTX Size Analyzer (Configurable)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <style>
-        /* CSS: Simplified Dark Theme */
-        body { 
-            font-family: sans-serif; 
-            max-width: 800px; 
-            margin: 2rem auto; 
-            padding: 0 1rem; 
-            line-height: 1.5; 
-            background-color: #1e1e1e; 
-            color: #e0e0e0; 
-        }
-        h1, h2, h3 { color: #fff; margin-bottom: 0.5rem; }
-        
-        .upload-area { 
-            border: 2px dashed #444; 
-            padding: 2rem; 
-            text-align: center; 
-            border-radius: 4px; 
-            margin-bottom: 2rem; 
-            cursor: pointer; 
-            background-color: #252525;
-            transition: border-color 0.2s, background-color 0.2s; 
-        }
-        .upload-area:hover { border-color: #888; background-color: #2a2a2a; }
-        
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1rem; }
-        
-        table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
-        th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #333; }
-        th { font-weight: 600; color: #fff; }
-        td { color: #ccc; }
-        
-        .bar-container { background: #333; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 5px; }
-        .bar-fill { height: 100%; background: #66bb6a; }
-        
-        .control-panel { 
-            margin-bottom: 1rem; 
-            padding: 0.5rem; 
-            background: #252525; 
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-        
-        input[type="number"] {
-            background: #333;
-            border: 1px solid #555;
-            color: #fff;
-            padding: 4px;
-            border-radius: 4px;
-            width: 60px;
-        }
-
-        .hidden { display: none; }
-        .error { color: #ff5252; margin-top: 1rem; }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
@@ -69,14 +13,17 @@
     
     <div id="drop-zone" class="upload-area">
         <p>Click or Drag & Drop PPTX file here</p>
-        <input type="file" id="file-input" accept=".pptx" style="display:none">
+        <input type="file" id="file-input" accept=".pptx">
     </div>
 
     <div id="results" class="hidden">
-        <h2>Total Size: <span id="total-size"></span></h2>
+        <div id="image-viewer" class="hidden">
+            <img id="image-preview">
+        </div>
+        <h2><span id="file-info"></span></h2>
         
         <div class="stats-grid">
-            <div>
+            <div class="category">
                 <h3>Composition by Category</h3>
                 <table id="category-table">
                     <thead><tr><th>Category</th><th>Size</th><th>%</th></tr></thead>
@@ -84,12 +31,15 @@
                 </table>
             </div>
             <div>
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="files">
                     <h3>Largest Individual Files</h3>
-                    <div class="control-panel">
-                        <label for="fileLimit">Show top:</label>
-                        <input type="number" id="fileLimit">
-                    </div>
+                </div>
+                <div id="file-limit-and-filter" class="control-panel">
+                    <label for="fileLimit">Show top:</label>
+                    <input type="number" id="fileLimit">
+                    <label><input type="checkbox" id="show-images"> Images</label>
+                    <label><input type="checkbox" id="show-slides"> Slides</label>
+                    <label><input type="checkbox" id="show-others"> Others</label>
                 </div>
                 <table id="largest-files-table">
                     <thead><tr><th>File Name</th><th>Size</th><th>Type</th></tr></thead>
@@ -100,200 +50,6 @@
     </div>
 
     <div id="error-msg" class="error"></div>
-
-<script>
-// --- Utility ---
-const byId = id  => document.getElementById(id);
-const qs   = sel => document.querySelector(sel);
-const qsa  = sel => Array.from(document.querySelectorAll(sel));
-
-// debounce wrapper
-function debounce(fn, delay = 100) {
-    let t;
-    return (...args) => {
-        clearTimeout(t);
-        t = setTimeout(() => fn.apply(null, args), delay);
-    };
-}
-
-// --- Configuration ---
-let config = {
-    numberOfFiles: 10,
-    minNumberOfFiles: 1,
-    maxNumberOfFiles: 500
-};
-
-// --- DOM elements ---
-const dom = {
-    dropZone: byId("drop-zone"),
-    fileInput: byId("file-input"),
-    results: byId("results"),
-    totalSize: byId("total-size"),
-    catTable: qs("#category-table tbody"),
-    fileTable: qs("#largest-files-table tbody"),
-    errorMsg: byId("error-msg"),
-    fileLimit: byId("fileLimit")
-};
-
-// --- State ---
-let state = {
-    totalUncompressed: 0,
-    categories: {},
-    files: [] // Sorted list of all files
-};
-
-// --- Init UI ---
-dom.fileLimit.value = config.numberOfFiles;
-dom.fileLimit.min = config.minNumberOfFiles;
-dom.fileLimit.max = config.maxNumberOfFiles;
-
-// --- Logic ---
-
-function formatBytes(bytes, decimals = 2) {
-    if (!+bytes) return '0 Bytes';
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
-}
-
-function getCategory(filename) {
-    if (filename.match(/ppt\/media\/.+/)) {
-        if (filename.match(/\.(png|jpg|jpeg|gif|tiff|bmp)$/i)) return 'Images';
-        if (filename.match(/\.(mp4|avi|mov|wmv|m4v)$/i)) return 'Video';
-        if (filename.match(/\.(mp3|wav|m4a)$/i)) return 'Audio';
-        return 'Other Media';
-    }
-    if (filename.match(/ppt\/fonts\/.+/)) return 'Embedded Fonts';
-    if (filename.match(/ppt\/slides\/.+/)) return 'Slides (XML)';
-    if (filename.match(/ppt\/embeddings\/.+/)) return 'Excel/Object Embeds';
-    return 'Structure/XML';
-}
-
-async function analyzePPTX(file) {
-    dom.errorMsg.textContent = "";
-    dom.results.classList.add('hidden');
-    
-    try {
-        const zip = await JSZip.loadAsync(file);
-        
-        // Reset state
-        state.files = [];
-        state.categories = {
-            'Images': 0, 'Video': 0, 'Audio': 0, 
-            'Embedded Fonts': 0, 'Slides (XML)': 0, 
-            'Excel/Object Embeds': 0, 'Structure/XML': 0, 
-            'Other Media': 0
-        };
-        state.totalUncompressed = 0;
-
-        zip.forEach((relativePath, zipEntry) => {
-            if (!zipEntry.dir) {
-                const size = zipEntry._data.uncompressedSize; 
-                state.totalUncompressed += size;
-                
-                const cat = getCategory(relativePath);
-                state.categories[cat] += size;
-
-                state.files.push({
-                    name: relativePath,
-                    size: size,
-                    cat: cat
-                });
-            }
-        });
-
-        // Sort once (Listing order preserved as per requirement)
-        state.files.sort((a, b) => b.size - a.size);
-
-        renderFullView();
-
-    } catch (e) {
-        console.error(e);
-        dom.errorMsg.textContent = "Error parsing file. Ensure it is a valid .pptx";
-    }
-}
-
-function renderFullView() {
-    dom.totalSize.textContent = formatBytes(state.totalUncompressed);
-    dom.catTable.innerHTML = "";
-    
-    // Render Categories
-    const sortedCats = Object.entries(state.categories).sort((a, b) => b[1] - a[1]);
-    
-    sortedCats.forEach(([name, size]) => {
-        if (size === 0) return;
-        const pct = ((size / state.totalUncompressed) * 100).toFixed(1);
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>
-                <div>${name}</div>
-                <div class="bar-container"><div class="bar-fill" style="width:${pct}%"></div></div>
-            </td>
-            <td>${formatBytes(size)}</td>
-            <td>${pct}%</td>
-        `;
-        dom.catTable.appendChild(row);
-    });
-
-    renderFilesList();
-    dom.results.classList.remove('hidden');
-}
-
-function renderFilesList() {
-    dom.fileTable.innerHTML = "";
-    
-    // Slice based on config SoT
-    const limit = Math.max(config.minNumberOfFiles, Math.min(config.numberOfFiles, config.maxNumberOfFiles));
-    const listToRender = state.files.slice(0, limit);
-
-    listToRender.forEach(f => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td style="word-break:break-all; font-size:0.9em">${f.name}</td>
-            <td>${formatBytes(f.size)}</td>
-            <td>${f.cat}</td>
-        `;
-        dom.fileTable.appendChild(row);
-    });
-}
-
-// --- Event Listeners ---
-
-// File Inputs
-dom.dropZone.addEventListener('click', () => dom.fileInput.click());
-dom.fileInput.addEventListener('change', (e) => {
-    if (e.target.files[0]) analyzePPTX(e.target.files[0]);
-});
-dom.dropZone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dom.dropZone.style.borderColor = '#888';
-});
-dom.dropZone.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    dom.dropZone.style.borderColor = '#444';
-});
-dom.dropZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dom.dropZone.style.borderColor = '#444';
-    if (e.dataTransfer.files[0]) {
-        analyzePPTX(e.dataTransfer.files[0]);
-    }
-});
-
-// Config Input Handler
-dom.fileLimit.addEventListener('input', debounce((e) => {
-    const val = parseInt(e.target.value, 10);
-    if (!isNaN(val)) {
-        config.numberOfFiles = val;
-        // Re-render only the file list part if we have data
-        if (state.files.length > 0) {
-            renderFilesList();
-        }
-    }
-}, 300));
-
-</script>
+    <script src="index.js"></script>
 </body>
 </html>
