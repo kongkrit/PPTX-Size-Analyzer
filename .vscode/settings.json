@@ -1,0 +1,65 @@
+{
+    // Line Endings (Critical for Docker/SDCC)
+    "files.eol": "\n",
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+
+    // Antigravity settings
+    "editor.formatOnSave": false,
+    // "editor.formatOnType": false,
+    // "editor.formatOnPaste": false,
+    // "[javascript]": {
+    //     "editor.defaultFormatter": null
+    // }
+
+    // Language-specific overrides (Windows Scripts must be CRLF)
+    "[bat]": {
+        "files.eol": "\r\n"
+    },
+    "[powershell]": {
+        "files.eol": "\r\n"
+    },
+
+    // File Visibility
+    "files.exclude": {
+
+        // Hiding git internals
+        "**/.git": true,
+
+        // Hiding .hello
+        "**/.hello": true,
+
+        // OS Junk - macOS
+        "**/.DS_Store": true,
+        "**/.AppleDouble": true,
+        "**/.LSOverride": true,
+        "**/._*": true,
+        "**/.Spotlight-V100": true,
+        "**/.Trashes": true,
+        "**/.fseventsd": true,
+            
+        // OS Junk - Windows
+        "**/Thumbs.db": true,
+        "**/ehthumbs.db": true,
+        "**/Desktop.ini": true,
+        "**/$RECYCLE.BIN/": true,
+        "**/*.lnk": true,
+            
+        // OS Junk - Linux
+        "**/.tscache": true,
+            
+        // Office Ghost Files (Windows/Mac)
+        "**/~$*": true,
+            
+        // hide obsolete stuff
+        "**/*.obsolete*": true,
+            
+        // dummy file to let above section end with comma
+        "IfYourFileNameIsThisYouDeserveIt_-_-_-": true
+
+    },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/out": true
+    }
+}
